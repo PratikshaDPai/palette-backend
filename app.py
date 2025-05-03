@@ -43,6 +43,9 @@ def recolor_image():
     base64_str = data['image']
     palette=data['palette']
 
+    if not palette:
+        return jsonify({"error": "Palette is empty"}), 400
+
     #decode base64, same as palette extractor
     img_data= base64.b64decode(base64_str)
     img=Image.open(BytesIO(img_data)).convert('RGB')
@@ -52,7 +55,8 @@ def recolor_image():
     pixels = img_np.reshape(-1, 3)
 
     # Cluster image pixels
-    kmeans = KMeans(n_clusters=min(len(palette), 5), n_init=10)
+    num_clusters = max(1, min(len(palette), 5))
+    kmeans = KMeans(n_clusters=num_clusters, n_init=10)
     labels = kmeans.fit_predict(pixels)
     clustered = kmeans.cluster_centers_.astype(np.uint8)
 

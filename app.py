@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 import cv2
 import numpy as np
 from sklearn.cluster import KMeans
+from sklearn.cluster import MiniBatchKMeans
 from PIL import Image
 from io import BytesIO
 import base64
@@ -48,15 +49,12 @@ def recolor_image():
             print("Missing image or palette:", data)
             return jsonify({"error": "Missing image or palette"}), 400
 
-        print("Received palette:", palette)
-
-        # Decode image
+        # Decode and convert to RGB
         img_data = base64.b64decode(base64_str)
         img = Image.open(BytesIO(img_data)).convert('RGB')
-        img_np = np.array(img)
 
-        # Resize large images for speed (optional but smart)
-        max_dim = 768
+        # Resize if needed (preserve aspect ratio)
+        max_dim = 2000
         if max(img.size) > max_dim:
             w, h = img.size
             if w > h:
@@ -66,38 +64,40 @@ def recolor_image():
                 new_h = max_dim
                 new_w = int(w * max_dim / h)
             img = img.resize((new_w, new_h))
-            img_np = np.array(img)
 
-
+        img_np = np.array(img)
         pixels = img_np.reshape(-1, 3)
 
-        # KMeans clustering
+        # Sample every 5th pixel to speed up clustering
+        sample_pixels = pixels[::5]
+
+        # Cluster sampled pixels
         num_clusters = max(1, min(len(palette), 5))
-        kmeans = KMeans(n_clusters=num_clusters, n_init=10)
-        labels = kmeans.fit_predict(pixels)
+        kmeans = MiniBatchKMeans(n_clusters=num_clusters, batch_size=1024, n_init=3)
+        labels = kmeans.fit_predict(pixels)  # full image
         clustered = kmeans.cluster_centers_.astype(np.uint8)
 
-        # Convert hex to RGB
+        # Convert hex palette to RGB
         hex_to_rgb = lambda h: tuple(int(h[i:i+2], 16) for i in (1, 3, 5))
         target_colors = np.array([hex_to_rgb(h) for h in palette], dtype=np.uint8)
 
-        # Map clusters
-        recolor_map = {
-            i: target_colors[np.argmin(np.linalg.norm(target_colors - c, axis=1))]
-            for i, c in enumerate(clustered)
-        }
+        # Map each cluster to closest palette color
+        recolor_map = {}
+        for i, c in enumerate(clustered):
+            distances = np.linalg.norm(target_colors - c, axis=1)
+            recolor_map[i] = target_colors[np.argmin(distances)]
 
         # Apply recoloring
         new_pixels = np.array([recolor_map[l] for l in labels], dtype=np.uint8)
         new_img_np = new_pixels.reshape(img_np.shape)
 
-        # Encode image
+        # Encode final image
         recolored_img = Image.fromarray(new_img_np)
         buffered = BytesIO()
         recolored_img.save(buffered, format="PNG")
         encoded = base64.b64encode(buffered.getvalue()).decode()
 
-        print("Recolor successful, returning image.")
+        print("Recolor success.")
         return jsonify({"recolor": encoded})
 
     except Exception as e:

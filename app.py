@@ -56,9 +56,18 @@ def recolor_image():
         img_np = np.array(img)
 
         # Resize large images for speed (optional but smart)
-        if max(img.size) > 512:
-            img = img.resize((min(512, img.size[0]), min(512, img.size[1])))
+        max_dim = 512
+        if max(img.size) > max_dim:
+            w, h = img.size
+            if w > h:
+                new_w = max_dim
+                new_h = int(h * max_dim / w)
+            else:
+                new_h = max_dim
+                new_w = int(w * max_dim / h)
+            img = img.resize((new_w, new_h))
             img_np = np.array(img)
+
 
         pixels = img_np.reshape(-1, 3)
 

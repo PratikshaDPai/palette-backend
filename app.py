@@ -37,50 +37,64 @@ def extract_palette():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
-@app.route('/recolor',methods=['POST'])
+@app.route('/recolor', methods=['POST'])
 def recolor_image():
-    data=request.json
-    base64_str = data['image']
-    palette=data['palette']
+    try:
+        data = request.get_json(force=True)
+        base64_str = data.get('image')
+        palette = data.get('palette')
 
-    if not palette:
-        return jsonify({"error": "Palette is empty"}), 400
+        if not base64_str or not palette:
+            print("Missing image or palette:", data)
+            return jsonify({"error": "Missing image or palette"}), 400
 
-    #decode base64, same as palette extractor
-    img_data= base64.b64decode(base64_str)
-    img=Image.open(BytesIO(img_data)).convert('RGB')
-    img_np=np.array(img)
+        print("Received palette:", palette)
 
-    #Reshape to (n_pixels,3)
-    pixels = img_np.reshape(-1, 3)
+        # Decode image
+        img_data = base64.b64decode(base64_str)
+        img = Image.open(BytesIO(img_data)).convert('RGB')
+        img_np = np.array(img)
 
-    # Cluster image pixels
-    num_clusters = max(1, min(len(palette), 5))
-    kmeans = KMeans(n_clusters=num_clusters, n_init=10)
-    labels = kmeans.fit_predict(pixels)
-    clustered = kmeans.cluster_centers_.astype(np.uint8)
+        # Resize large images for speed (optional but smart)
+        if max(img.size) > 512:
+            img = img.resize((min(512, img.size[0]), min(512, img.size[1])))
+            img_np = np.array(img)
 
-    # Convert hex palette to RGB
-    hex_to_rgb = lambda h: tuple(int(h[i:i+2], 16) for i in (1, 3, 5))
-    target_colors = np.array([hex_to_rgb(h) for h in palette], dtype=np.uint8)
+        pixels = img_np.reshape(-1, 3)
 
-    # Map each cluster to the closest target color
-    recolor_map = {}
-    for i, c in enumerate(clustered):
-        distances = np.linalg.norm(target_colors - c, axis=1)
-        recolor_map[i] = target_colors[np.argmin(distances)]
+        # KMeans clustering
+        num_clusters = max(1, min(len(palette), 5))
+        kmeans = KMeans(n_clusters=num_clusters, n_init=10)
+        labels = kmeans.fit_predict(pixels)
+        clustered = kmeans.cluster_centers_.astype(np.uint8)
 
-    # Apply recoloring
-    new_pixels = np.array([recolor_map[l] for l in labels], dtype=np.uint8)
-    new_img_np = new_pixels.reshape(img_np.shape)
+        # Convert hex to RGB
+        hex_to_rgb = lambda h: tuple(int(h[i:i+2], 16) for i in (1, 3, 5))
+        target_colors = np.array([hex_to_rgb(h) for h in palette], dtype=np.uint8)
 
-    # Encode back to base64
-    recolored_img = Image.fromarray(new_img_np)
-    buffered = BytesIO()
-    recolored_img.save(buffered, format="PNG")
-    encoded = base64.b64encode(buffered.getvalue()).decode()
+        # Map clusters
+        recolor_map = {
+            i: target_colors[np.argmin(np.linalg.norm(target_colors - c, axis=1))]
+            for i, c in enumerate(clustered)
+        }
 
-    return jsonify({"recolor": encoded})
+        # Apply recoloring
+        new_pixels = np.array([recolor_map[l] for l in labels], dtype=np.uint8)
+        new_img_np = new_pixels.reshape(img_np.shape)
+
+        # Encode image
+        recolored_img = Image.fromarray(new_img_np)
+        buffered = BytesIO()
+        recolored_img.save(buffered, format="PNG")
+        encoded = base64.b64encode(buffered.getvalue()).decode()
+
+        print("Recolor successful, returning image.")
+        return jsonify({"recolor": encoded})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Server crash", "details": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)

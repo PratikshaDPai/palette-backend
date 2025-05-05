@@ -10,16 +10,40 @@ This separation of concerns helped me keep the app lightweight and performant on
 
 ---
 
-## ✨ Features
+## Features
 
-- ✅ Extract dominant color palettes from images
-- ✅ Recolor one image using the palette of another
-- ✅ Fast and mobile-friendly API
-- ✅ Designed to integrate with a React Native frontend
+-  Extract dominant color palettes from images
+-  Recolor a base image using a provided palette
+-  Fast and mobile-friendly APIs
+-  Designed to integrate with a React Native frontend
 
 ---
 
-## 🚀 Quick Start
+## 🧩 Backend Logic
+
+### /palette – Extract a Color Palette
+Purpose: Take a user-uploaded image (base64) → return its 6 most dominant colors
+
+  How:
+- Resize the image to 100×100 (speeds up processing)
+- Flatten the image into a list of pixels (RGB values)
+- Apply KMeans(n=6) from sklearn.cluster
+- Convert the RGB cluster centers to hex codes like #aabbcc
+- Return the list of hex codes in a JSON response
+
+### /recolor – Recolor the Base Image
+Purpose: Replace the base image’s color clusters with new palette colors
+
+  How:
+- Decode the base64 image and convert it to a NumPy array
+- Resize if it's too large (>2000px on any side) to keep memory low
+- Flatten the image into pixels and sample every 5th pixel to speed things up
+- Run MiniBatchKMeans to cluster the image pixels
+- For each cluster center, find the closest palette color using Euclidean RGB distance
+- Replace every pixel’s cluster with its corresponding palette color
+- Reconstruct the image → encode as base64 → return to frontend
+
+## Using the Repository
 
 ### 1. Clone the repo
 
@@ -48,7 +72,7 @@ python app.py
 ```
 
 Server will start on http://127.0.0.1:5000 by default.
-📬 API Endpoints
+## API Endpoints
 🔹 POST /palette
 
 Extracts a color palette from an image.
@@ -90,40 +114,7 @@ Response:
 }
 ```
 
-🧠 How It Works
-🎯 Palette Extraction
-
-    Resizes input image (128x128) for performance
-
-    Uses KMeans clustering (n=6) to find dominant colors
-
-    Converts cluster centers (RGB) to hex format for frontend use
-
-🎨 Recoloring
-
-    Clusters the base image using KMeans
-
-    Maps each cluster to the closest hex color in the target palette (Euclidean distance in RGB space)
-
-    Reconstructs the image with new colors and returns the result as base64 PNG
-
-📦 Dependencies
-
-    Flask
-
-    Pillow
-
-    NumPy
-
-    scikit-learn
-
-Install all dependencies with:
-
-```bash
-pip install -r requirements.txt
-```
-
-🧪 Testing with Postman
+##  Testing with Postman
 
 To test /recolor, provide:
 
@@ -133,8 +124,8 @@ To test /recolor, provide:
 
 ["#f311c3", "#0cd5d2", "#dbc722", "#0e5d18", "#ef2a1b", "#0a5ec6"]
 
-📱 Companion Frontend
+## 📱 Companion Frontend
 
 Check out the frontend repo:
 
-👉 [Aya React Native App](https://github.com/PratikshaDPai/color-palette-cartoonify)
+ [Aya React Native App](https://github.com/PratikshaDPai/color-palette-cartoonify)
